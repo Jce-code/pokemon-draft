@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pokemon Draft Board</title>
+    <meta http-equiv="refresh" content="2">
+</head>
+<body>
+    <h1>Pokemon Draft Board</h1>
+
+    {% if session_player %}
+        <p>You joined as: <strong>{{ session_player.name }}</strong></p>
+        <p><a href="/join/">Change Player</a></p>
+    {% else %}
+        <p><a href="/join/">Choose your player</a></p>
+    {% endif %}
+
+    {% if draft_state and not draft_state.started %}
+        <h2>Draft Lobby</h2>
+        <p>Players can join now. When everyone is ready, click Begin Draft.</p>
+
+        <form method="POST" action="/begin-draft/">
+            {% csrf_token %}
+            <button type="submit">Begin Draft</button>
+        </form>
+    {% endif %}
+
+    {% if draft_state.started and current_player %}
+        <h2>Current Pick: {{ current_player.name }}</h2>
+        <p>Pick Number: {{ draft_state.current_pick_number }}</p>
+
+        <h2>Time Left: <span id="timer">{{ time_remaining }}</span> seconds</h2>
+
+        <form id="autoPickForm" method="POST" action="/auto-pick/">
+            {% csrf_token %}
+            <input type="hidden" name="expected_pick_number" value="{{ draft_state.current_pick_number }}">
+        </form>
+    {% elif draft_state.started %}
+        <p>No current player found.</p>
+    {% endif %}
+
+    <hr>
+
+    <h2>Teams</h2>
+
+    {% for player in players %}
+        <h3>{{ player.name }}</h3>
+
+        {% if player.picks %}
+            <div style="display: flex; flex-wrap: wrap;">
+                {% for pokemon in player.picks %}
+                    <div style="margin: 8px; text-align: center; border: 1px solid #ccc; padding: 8px; border-radius: 8px;">
+                        <img src="{{ pokemon.image }}" alt="{{ pokemon.name }}">
+                        <p><strong>{{ pokemon.name }}</strong></p>
+                        <small>{{ pokemon.category }}</small>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>No picks yet.</p>
+        {% endif %}
+    {% endfor %}
+
+    <hr>
+
+    <h2>Available Pokemon</h2>
+
+    {% for category, pokemons in categorized_pokemon.items %}
+        {% if pokemons %}
+            <h3>{{ category }} ({{ pokemons|length }})</h3>
+
+            <div style="display: flex; flex-wrap: wrap;">
+                {% for pokemon in pokemons %}
+                    <div style="margin: 10px; text-align: center; border: 1px solid #ccc; padding: 10px; border-radius: 8px;">
+                        <img src="{{ pokemon.image }}" alt="{{ pokemon.name }}">
+                        <p><strong>{{ pokemon.name }}</strong></p>
+                        <small>{{ pokemon.category }}</small>
+
+                        {% if draft_state.started and session_player and current_player and session_player.id == current_player.id %}
+                            <form method="POST" action="/pick-pokemon/{{ pokemon.id }}/">
+                                {% csrf_token %}
+                                <input type="hidden" name="expected_pick_number" value="{{ draft_state.current_pick_number }}">
+                                <button type="submit">Draft</button>
+                            </form>
+                        {% elif not draft_state.started %}
+                            <button disabled>Draft Not Started</button>
+                        {% else %}
+                            <button disabled>Not Your Turn</button>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endfor %}
+
+    {% if draft_state.started and current_player %}
+        <script>
+            let timeLeft = parseInt(document.getElementById("timer").textContent);
+
+            const countdown = setInterval(function() {
+                timeLeft -= 1;
+                document.getElementById("timer").textContent = timeLeft;
+
+                if (timeLeft <= 0) {
+                    clearInterval(countdown);
+                    document.getElementById("autoPickForm").submit();
+                }
+            }, 1000);
+        </script>
+    {% endif %}
+</body>
+</html>

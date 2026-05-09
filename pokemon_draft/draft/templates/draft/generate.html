@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pokemon Draft Generator</title>
+</head>
+<body>
+    <h1>Pokemon Draft Generator</h1>
+
+    <form method="POST">
+        {% csrf_token %}
+
+        <label>Total Pokemon Bank Size:</label>
+        <input type="number" name="total_count" min="1" max="1025" value="100" required>
+
+        <br><br>
+
+        <label>Number of Legendaries:</label>
+        <input type="number" name="legendary_count" min="0" value="12">
+
+        <br><br>
+
+        <label>Number of Mythicals:</label>
+        <input type="number" name="mythical_count" min="0" value="0">
+
+        <br><br>
+
+        <label>Number of Paradox Pokemon:</label>
+        <input type="number" name="paradox_count" min="0" value="0">
+
+        <br><br>
+
+        <label>Number of Ultra Beasts:</label>
+        <input type="number" name="ultra_beast_count" min="0" value="0">
+
+        <br><br>
+
+        <label>Players:</label>
+        <br>
+        <textarea name="players" rows="5" cols="30">Jesse
+Friend 1
+Friend 2
+Friend 3</textarea>
+        <p>Put one player name per line.</p>
+
+        <hr>
+
+        <h3>Team Rules</h3>
+
+        <label>Max Legendaries Per Team:</label>
+        <input type="number" name="max_legendaries" min="0" value="1">
+
+        <br><br>
+
+        <label>Max Mythicals Per Team:</label>
+        <input type="number" name="max_mythicals" min="0" value="0">
+
+        <br><br>
+
+        <label>Max Paradox Per Team:</label>
+        <input type="number" name="max_paradox" min="0" value="1">
+
+        <br><br>
+
+        <label>Max Ultra Beasts Per Team:</label>
+        <input type="number" name="max_ultra_beasts" min="0" value="1">
+
+        <br><br>
+
+        <label>Pick Timer (seconds):</label>
+        <input type="number" name="pick_timer_seconds" min="10" value="90">
+
+        <br><br>
+
+        <button type="submit">Generate Bank</button>
+    </form>
+
+    {% if error_message %}
+        <p style="color: red;">{{ error_message }}</p>
+    {% endif %}
+
+    {% if selected_pokemon %}
+        <h2>Generated Pokemon</h2>
+
+        {% for category, pokemons in selected_pokemon.items %}
+            {% if pokemons %}
+                <h3>{{ category }} ({{ pokemons|length }})</h3>
+
+                <div style="display: flex; flex-wrap: wrap;">
+                    {% for pokemon in pokemons %}
+                        <div style="margin: 10px; text-align: center; border: 1px solid #ccc; padding: 10px; border-radius: 8px;">
+                            <img src="{{ pokemon.image }}" alt="{{ pokemon.name }}">
+                            <p><strong>{{ pokemon.name }}</strong></p>
+                            <small>{{ pokemon.category }}</small>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endfor %}
+
+        <hr>
+
+        <form method="POST" action="/start-draft/">
+            {% csrf_token %}
+            <button type="submit">Start Draft</button>
+        </form>
+    {% endif %}
+</body>
+</html>
