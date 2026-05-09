@@ -3,7 +3,7 @@ import requests
 from django.shortcuts import render, redirect
 from django.utils import timezone
 from .models import DraftState, DraftPokemon, Player
-
+EVOLUTION_CHAIN_CACHE = {}
 ALL_POKEMON = requests.get("https://pokeapi.co/api/v2/pokemon?limit=1025").json()["results"]
 
 LEGENDARIES = {
@@ -69,11 +69,19 @@ def build_pokemon_card(pokemon):
 
 def get_evolution_chain_id(pokemon):
     poke_id = pokemon["url"].split("/")[-2]
+
+    if poke_id in EVOLUTION_CHAIN_CACHE:
+        return EVOLUTION_CHAIN_CACHE[poke_id]
+
     species_url = f"https://pokeapi.co/api/v2/pokemon-species/{poke_id}/"
     species_data = requests.get(species_url).json()
 
     evolution_chain_url = species_data["evolution_chain"]["url"]
-    return evolution_chain_url.strip("/").split("/")[-1]
+    evolution_chain_id = evolution_chain_url.strip("/").split("/")[-1]
+
+    EVOLUTION_CHAIN_CACHE[poke_id] = evolution_chain_id
+
+    return evolution_chain_id
 
 
 def choose_unique_evolution_lines(pool, count, used_evolution_chains):
