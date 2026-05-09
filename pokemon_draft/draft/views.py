@@ -43,14 +43,17 @@ PARADOX = {
 
 
 def get_category(name):
-    if name in LEGENDARIES:
+    base_name = name.split("-")[0]
+
+    if base_name in LEGENDARIES:
         return "Legendary"
-    if name in MYTHICALS:
+    if base_name in MYTHICALS:
         return "Mythical"
     if name in ULTRA_BEASTS:
         return "Ultra Beast"
     if name in PARADOX:
         return "Paradox"
+
     return "Normal"
 
 
@@ -62,6 +65,35 @@ def build_pokemon_card(pokemon):
         "image": f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{poke_id}.png",
         "category": get_category(pokemon["name"]),
     }
+
+
+def get_evolution_chain_id(pokemon):
+    poke_id = pokemon["url"].split("/")[-2]
+    species_url = f"https://pokeapi.co/api/v2/pokemon-species/{poke_id}/"
+    species_data = requests.get(species_url).json()
+
+    evolution_chain_url = species_data["evolution_chain"]["url"]
+    return evolution_chain_url.strip("/").split("/")[-1]
+
+
+def choose_unique_evolution_lines(pool, count, used_evolution_chains):
+    chosen = []
+    shuffled_pool = pool[:]
+    random.shuffle(shuffled_pool)
+
+    for pokemon in shuffled_pool:
+        if len(chosen) >= count:
+            break
+
+        evolution_chain_id = get_evolution_chain_id(pokemon)
+
+        if evolution_chain_id in used_evolution_chains:
+            continue
+
+        used_evolution_chains.add(evolution_chain_id)
+        chosen.append(pokemon)
+
+    return chosen
 
 
 def generate_pokemon(request):
@@ -91,13 +123,11 @@ def generate_pokemon(request):
         elif special_total > total_count:
             error_message = "Your special category counts are higher than the total bank size."
         else:
-            legendary_pool = [p for p in ALL_POKEMON if p["name"] in LEGENDARIES]
-            mythical_pool = [p for p in ALL_POKEMON if p["name"] in MYTHICALS]
-            paradox_pool = [p for p in ALL_POKEMON if p["name"] in PARADOX]
-            ultra_beast_pool = [p for p in ALL_POKEMON if p["name"] in ULTRA_BEASTS]
-
-            special_names = LEGENDARIES | MYTHICALS | PARADOX | ULTRA_BEASTS
-            normal_pool = [p for p in ALL_POKEMON if p["name"] not in special_names]
+            legendary_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Legendary"]
+            mythical_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Mythical"]
+            paradox_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Paradox"]
+            ultra_beast_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Ultra Beast"]
+            normal_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Normal"]
 
             if legendary_count > len(legendary_pool):
                 error_message = "You requested more legendaries than exist."
@@ -109,13 +139,14 @@ def generate_pokemon(request):
                 error_message = "You requested more Ultra Beasts than exist."
             else:
                 normal_count = total_count - special_total
+                used_evolution_chains = set()
 
                 chosen = []
-                chosen += random.sample(legendary_pool, legendary_count)
-                chosen += random.sample(mythical_pool, mythical_count)
-                chosen += random.sample(paradox_pool, paradox_count)
-                chosen += random.sample(ultra_beast_pool, ultra_beast_count)
-                chosen += random.sample(normal_pool, normal_count)
+                chosen += choose_unique_evolution_lines(legendary_pool, legendary_count, used_evolution_chains)
+                chosen += choose_unique_evolution_lines(mythical_pool, mythical_count, used_evolution_chains)
+                chosen += choose_unique_evolution_lines(paradox_pool, paradox_count, used_evolution_chains)
+                chosen += choose_unique_evolution_lines(ultra_beast_pool, ultra_beast_count, used_evolution_chains)
+                chosen += choose_unique_evolution_lines(normal_pool, normal_count, used_evolution_chains)
 
                 random.shuffle(chosen)
 
@@ -171,6 +202,7 @@ def generate_pokemon(request):
 def start_draft(request):
     return redirect("/join/")
 
+
 def begin_draft(request):
     draft_state = DraftState.objects.first()
 
@@ -181,8 +213,6 @@ def begin_draft(request):
         draft_state.save()
 
     return redirect("/draft-board/")
-
-    
 
 
 def get_current_player():
@@ -272,7 +302,6 @@ def pick_pokemon(request, pokemon_id):
     pokemon = DraftPokemon.objects.get(id=pokemon_id)
 
     session_player_id = request.session.get("player_id")
-
     expected_pick_number = int(request.POST.get("expected_pick_number", 0))
 
     if (
@@ -298,7 +327,6 @@ def pick_pokemon(request, pokemon_id):
 def auto_pick(request):
     draft_state = DraftState.objects.first()
     current_player = get_current_player()
-
     expected_pick_number = int(request.POST.get("expected_pick_number", 0))
 
     if (
