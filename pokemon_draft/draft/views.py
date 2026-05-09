@@ -1,87 +1,14 @@
 import random
-import requests
+import json
+from pathlib import Path
 from django.shortcuts import render, redirect
 from django.utils import timezone
 from .models import DraftState, DraftPokemon, Player
-EVOLUTION_CHAIN_CACHE = {}
-ALL_POKEMON = requests.get("https://pokeapi.co/api/v2/pokemon?limit=1025").json()["results"]
 
-LEGENDARIES = {
-    "articuno", "zapdos", "moltres", "mewtwo", "raikou", "entei", "suicune",
-    "lugia", "ho-oh", "regirock", "regice", "registeel", "latias", "latios",
-    "kyogre", "groudon", "rayquaza", "uxie", "mesprit", "azelf", "dialga",
-    "palkia", "heatran", "regigigas", "giratina", "cresselia", "cobalion",
-    "terrakion", "virizion", "tornadus", "thundurus", "landorus", "reshiram",
-    "zekrom", "kyurem", "xerneas", "yveltal", "zygarde", "type-null",
-    "silvally", "tapu-koko", "tapu-lele", "tapu-bulu", "tapu-fini",
-    "cosmog", "cosmoem", "solgaleo", "lunala", "necrozma", "zacian",
-    "zamazenta", "eternatus", "kubfu", "urshifu", "regieleki", "regidrago",
-    "glastrier", "spectrier", "calyrex", "wo-chien", "chien-pao",
-    "ting-lu", "chi-yu", "koraidon", "miraidon", "okidogi", "munkidori",
-    "fezandipiti", "ogerpon", "terapagos"
-}
+DATA_FILE = Path(__file__).parent / "draft" / "pokemon_data.json"
 
-MYTHICALS = {
-    "mew", "celebi", "jirachi", "deoxys", "phione", "manaphy", "darkrai",
-    "shaymin", "arceus", "victini", "keldeo", "meloetta", "genesect",
-    "diancie", "hoopa", "volcanion", "magearna", "marshadow", "zeraora",
-    "meltan", "melmetal", "zarude", "pecharunt"
-}
-
-ULTRA_BEASTS = {
-    "nihilego", "buzzwole", "pheromosa", "xurkitree", "celesteela",
-    "kartana", "guzzlord", "poipole", "naganadel", "stakataka", "blacephalon"
-}
-
-PARADOX = {
-    "great-tusk", "scream-tail", "brute-bonnet", "flutter-mane",
-    "slither-wing", "sandy-shocks", "roaring-moon", "walking-wake",
-    "gouging-fire", "raging-bolt", "iron-treads", "iron-bundle",
-    "iron-hands", "iron-jugulis", "iron-moth", "iron-thorns",
-    "iron-valiant", "iron-leaves", "iron-crown", "iron-boulder"
-}
-
-
-def get_category(name):
-    base_name = name.split("-")[0]
-
-    if base_name in LEGENDARIES:
-        return "Legendary"
-    if base_name in MYTHICALS:
-        return "Mythical"
-    if name in ULTRA_BEASTS:
-        return "Ultra Beast"
-    if name in PARADOX:
-        return "Paradox"
-
-    return "Normal"
-
-
-def build_pokemon_card(pokemon):
-    poke_id = pokemon["url"].split("/")[-2]
-
-    return {
-        "name": pokemon["name"].replace("-", " ").title(),
-        "image": f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{poke_id}.png",
-        "category": get_category(pokemon["name"]),
-    }
-
-
-def get_evolution_chain_id(pokemon):
-    poke_id = pokemon["url"].split("/")[-2]
-
-    if poke_id in EVOLUTION_CHAIN_CACHE:
-        return EVOLUTION_CHAIN_CACHE[poke_id]
-
-    species_url = f"https://pokeapi.co/api/v2/pokemon-species/{poke_id}/"
-    species_data = requests.get(species_url).json()
-
-    evolution_chain_url = species_data["evolution_chain"]["url"]
-    evolution_chain_id = evolution_chain_url.strip("/").split("/")[-1]
-
-    EVOLUTION_CHAIN_CACHE[poke_id] = evolution_chain_id
-
-    return evolution_chain_id
+with open(DATA_FILE, "r", encoding="utf-8") as file:
+    ALL_POKEMON = json.load(file)
 
 
 def choose_unique_evolution_lines(pool, count, used_evolution_chains):
@@ -93,7 +20,7 @@ def choose_unique_evolution_lines(pool, count, used_evolution_chains):
         if len(chosen) >= count:
             break
 
-        evolution_chain_id = get_evolution_chain_id(pokemon)
+        evolution_chain_id = pokemon["evolution_chain_id"]
 
         if evolution_chain_id in used_evolution_chains:
             continue
@@ -131,11 +58,11 @@ def generate_pokemon(request):
         elif special_total > total_count:
             error_message = "Your special category counts are higher than the total bank size."
         else:
-            legendary_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Legendary"]
-            mythical_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Mythical"]
-            paradox_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Paradox"]
-            ultra_beast_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Ultra Beast"]
-            normal_pool = [p for p in ALL_POKEMON if get_category(p["name"]) == "Normal"]
+            legendary_pool = [p for p in ALL_POKEMON if p["category"] == "Legendary"]
+            mythical_pool = [p for p in ALL_POKEMON if p["category"] == "Mythical"]
+            paradox_pool = [p for p in ALL_POKEMON if p["category"] == "Paradox"]
+            ultra_beast_pool = [p for p in ALL_POKEMON if p["category"] == "Ultra Beast"]
+            normal_pool = [p for p in ALL_POKEMON if p["category"] == "Normal"]
 
             if legendary_count > len(legendary_pool):
                 error_message = "You requested more legendaries than exist."
@@ -156,50 +83,52 @@ def generate_pokemon(request):
                 chosen += choose_unique_evolution_lines(ultra_beast_pool, ultra_beast_count, used_evolution_chains)
                 chosen += choose_unique_evolution_lines(normal_pool, normal_count, used_evolution_chains)
 
-                random.shuffle(chosen)
+                if len(chosen) < total_count:
+                    error_message = "Not enough unique evolution lines available for your requested bank size."
+                else:
+                    random.shuffle(chosen)
 
-                categorized = {
-                    "Legendary": [],
-                    "Mythical": [],
-                    "Paradox": [],
-                    "Ultra Beast": [],
-                    "Normal": [],
-                }
+                    categorized = {
+                        "Legendary": [],
+                        "Mythical": [],
+                        "Paradox": [],
+                        "Ultra Beast": [],
+                        "Normal": [],
+                    }
 
-                for pokemon in chosen:
-                    card = build_pokemon_card(pokemon)
-                    categorized[card["category"]].append(card)
+                    for pokemon in chosen:
+                        categorized[pokemon["category"]].append(pokemon)
 
-                DraftPokemon.objects.all().delete()
-                DraftState.objects.all().delete()
-                Player.objects.all().delete()
+                    DraftPokemon.objects.all().delete()
+                    DraftState.objects.all().delete()
+                    Player.objects.all().delete()
 
-                DraftState.objects.create(
-                    started=False,
-                    current_pick_number=1,
-                    turn_started_at=timezone.now(),
-                    max_legendaries=max_legendaries,
-                    max_mythicals=max_mythicals,
-                    max_paradox=max_paradox,
-                    max_ultra_beasts=max_ultra_beasts,
-                    pick_timer_seconds=pick_timer_seconds,
-                )
-
-                for index, player_name in enumerate(player_names):
-                    Player.objects.create(
-                        name=player_name,
-                        draft_position=index + 1,
+                    DraftState.objects.create(
+                        started=False,
+                        current_pick_number=1,
+                        turn_started_at=timezone.now(),
+                        max_legendaries=max_legendaries,
+                        max_mythicals=max_mythicals,
+                        max_paradox=max_paradox,
+                        max_ultra_beasts=max_ultra_beasts,
+                        pick_timer_seconds=pick_timer_seconds,
                     )
 
-                for category_name, pokemon_list in categorized.items():
-                    for pokemon in pokemon_list:
-                        DraftPokemon.objects.create(
-                            name=pokemon["name"],
-                            image=pokemon["image"],
-                            category=pokemon["category"],
+                    for index, player_name in enumerate(player_names):
+                        Player.objects.create(
+                            name=player_name,
+                            draft_position=index + 1,
                         )
 
-                selected_pokemon = categorized
+                    for category_name, pokemon_list in categorized.items():
+                        for pokemon in pokemon_list:
+                            DraftPokemon.objects.create(
+                                name=pokemon["display_name"],
+                                image=pokemon["image"],
+                                category=pokemon["category"],
+                            )
+
+                    selected_pokemon = categorized
 
     return render(request, "draft/generate.html", {
         "selected_pokemon": selected_pokemon,
